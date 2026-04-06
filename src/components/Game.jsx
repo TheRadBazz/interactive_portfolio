@@ -3,7 +3,7 @@ import React, { useRef, useState, useEffect, useCallback } from 'react'
 import * as THREE from 'three'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Physics, useBox, usePlane, useSphere } from '@react-three/cannon'
-import { Html, Stars } from '@react-three/drei'
+import { Clone, Html, Stars, useGLTF } from '@react-three/drei'
 import { motion, AnimatePresence } from 'framer-motion'
 
 /* ===== CONFIG ===== */
@@ -16,11 +16,46 @@ const MOVE_SPEED = 6.5         // desired horizontal speed (m/s)
 const MOVE_IMPULSE_SCALE = 1.0 // multiplier for correction impulse
 const DEBRIS_LIFETIME = 16200
 const IGNORE_COLLISION_MS = 350 // ignore early collisions after scene start (prevents spawn hits)
+const PLAYER_VISUAL_HEIGHT = 1.8
 
 /* ===== helpers ===== */
 const rand = (a, b) => Math.random() * (b - a) + a
 
-/* ---------------- Player (sphere physics) ---------------- */
+function PlayerAvatar() {
+  const { scene } = useGLTF('/models/barlowAvatar.glb')
+
+  const { scale, yOffset } = React.useMemo(() => {
+    const bounds = new THREE.Box3().setFromObject(scene)
+    const size = new THREE.Vector3()
+    bounds.getSize(size)
+
+    const height = size.y || PLAYER_VISUAL_HEIGHT
+    const nextScale = PLAYER_VISUAL_HEIGHT / height
+    const footOffset = -PLAYER_RADIUS - bounds.min.y * nextScale
+
+    return {
+      scale: nextScale,
+      yOffset: footOffset
+    }
+  }, [scene])
+
+  useEffect(() => {
+    scene.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true
+        child.receiveShadow = true
+      }
+    })
+  }, [scene])
+
+  return (
+    <group position={[0, yOffset, 0]} scale={scale}>
+      <Clone object={scene} castShadow receiveShadow />
+    </group>
+  )
+}
+
+/* ---------------- Player (sphere physics + avatar visual) ---------------- */
 function PlayerBody({ positionRef, setHoveredPlatform, lockActiveRef, camRotRef }) {
   const { camera } = useThree()
   // sphere body
@@ -39,6 +74,7 @@ function PlayerBody({ positionRef, setHoveredPlatform, lockActiveRef, camRotRef 
   const grounded = useRef(false)
   const lastVel = useRef([0, 0, 0])
   const tmpV = new THREE.Vector3()
+  const visualRef = useRef()
 
   // pointer lock and drag-to-rotate mouse-look
   const mouseDownRef = useRef(false)
@@ -128,8 +164,8 @@ function PlayerBody({ positionRef, setHoveredPlatform, lockActiveRef, camRotRef 
       const iz = (desired.z - (curV[2] || 0)) * MOVE_IMPULSE_SCALE
       api.applyImpulse([ix, 0, iz], [0, 0, 0])
 
-      // rotate player to face camera yaw
-      if (ref.current) ref.current.rotation.y = yaw
+      // rotate the visible avatar to face the move direction
+      if (visualRef.current) visualRef.current.rotation.y = yaw
     }
 
     // jump
@@ -146,12 +182,17 @@ function PlayerBody({ positionRef, setHoveredPlatform, lockActiveRef, camRotRef 
   })
 
 
-  // render a visible sphere for the player
+  // keep the physics sphere invisible and render the avatar on top of it
   return (
-    <mesh ref={ref}>
-      <sphereGeometry args={[PLAYER_RADIUS, 18, 18]} />
-      <meshStandardMaterial color={'#00ffd6'} metalness={0.1} roughness={0.5} />
-    </mesh>
+    <group ref={ref}>
+      <mesh visible={false}>
+        <sphereGeometry args={[PLAYER_RADIUS, 18, 18]} />
+        <meshStandardMaterial transparent opacity={0} />
+      </mesh>
+      <group ref={visualRef}>
+        <PlayerAvatar />
+      </group>
+    </group>
   )
 }
 
@@ -560,3 +601,5 @@ export default function GamePhysics({ onOpenProject }) {
     </div>
   )
 }
+
+useGLTF.preload('/models/barlowAvatar.glb')
