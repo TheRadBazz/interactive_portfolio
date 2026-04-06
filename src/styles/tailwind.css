@@ -1,0 +1,7 @@
+/* src/styles/tailwind.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,body,#root { height:100% }
+.bg-black { background: radial-gradient(ellipse at center, #071019 0%, #000 40%); }
